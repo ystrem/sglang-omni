@@ -213,11 +213,27 @@ class SpeechRequestValidator:
 
         return self.prepare_generation_request(request).request
 
+    def validate_continuation_request(self, request: CreateSpeechRequest) -> None:
+        """Fail loud on a continuation hop that carries no prefix.
+
+        Silently degrading to generation would answer 200 with an utterance that
+        restarts from the first word - the audible seam this mode removes. On
+        this branch the prefix arrives as ref_audio (path or data-URI), so the
+        absence check covers ref_audio; ref_text alone is not a prefix.
+        """
+        if request.mode == "continuation" and not request.ref_audio:
+            raise bad_request(
+                "continuation mode requires a prefix: pass ref_audio "
+                "(the prefix audio) and optionally ref_text (its transcript)",
+                param="ref_audio",
+            )
+
     def prepare_generation_request(
         self, request: CreateSpeechRequest
     ) -> PreparedSpeechRequest:
         """Validate a parsed request and build backend reference descriptors."""
 
+        self.validate_continuation_request(request)
         updates = self.prepare_generation_updates(request)
         prepared_references = self.prepare_reference_fields(request)
         self.validate_speech_references(request, prepared_references)
