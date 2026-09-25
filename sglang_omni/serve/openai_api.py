@@ -21,6 +21,7 @@ Provides the following endpoints:
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import time
@@ -87,6 +88,7 @@ from sglang_omni.serve.protocol import (
     ChatCompletionStreamResponse,
     ContinueGenerationRequest,
     CreateSpeechBatchRequest,
+    CreateSpeechJSONResponse,
     DestroyWeightsUpdateGroupRequest,
     GenerateAudio,
     GenerateFinishReason,
@@ -1514,6 +1516,23 @@ def register_speech(app: FastAPI) -> None:
                 exc,
                 unexpected_message="Error generating speech for request %s",
             )
+
+        if req.return_format == "json":
+            response = CreateSpeechJSONResponse(
+                audio=base64.b64encode(result.audio_bytes).decode("ascii"),
+                format=result.format,
+                media_type=result.mime_type,
+                next_prefix=(
+                    result.continuation.get("next_prefix")
+                    if result.continuation is not None
+                    else None
+                ),
+            )
+            return JSONResponse(
+                content=response.model_dump(exclude_none=True),
+            )
+        else:
+            pass
 
         headers = {
             "Content-Disposition": f'attachment; filename="speech.{result.format}"',

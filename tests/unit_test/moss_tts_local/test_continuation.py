@@ -197,3 +197,87 @@ def test_speech_request_rejects_invalid_mode() -> None:
 
     with pytest.raises(ValidationError):
         CreateSpeechRequest.model_validate({"input": "hello", "mode": "bogus"})
+
+
+def test_continuation_without_prefix_is_bad_request() -> None:
+    from sglang_omni.serve.protocol import CreateSpeechRequest
+    from sglang_omni.serve.speech_errors import SpeechAPIError
+    from sglang_omni.serve.speech_service import SpeechRequestValidator
+
+    request = CreateSpeechRequest.model_validate(
+        {"input": "continue", "mode": "continuation"}
+    )
+    validator = SpeechRequestValidator(default_model="moss-tts-local")
+
+    with pytest.raises(SpeechAPIError) as exc_info:
+        validator.validate_continuation_request(request)
+
+    assert exc_info.value.status_code == 400
+    assert "prefix_audio_codes" in exc_info.value.message
+    assert "ref_audio" in exc_info.value.message
+
+
+def test_continuation_with_prefix_audio_codes_passes_validation() -> None:
+    from sglang_omni.serve.protocol import CreateSpeechRequest
+    from sglang_omni.serve.speech_service import SpeechRequestValidator
+
+    request = CreateSpeechRequest.model_validate(
+        {
+            "input": "continue",
+            "mode": "continuation",
+            "prefix_audio_codes": {"frames": 1, "n_vq": N_VQ, "data": ""},
+        }
+    )
+    validator = SpeechRequestValidator(default_model="moss-tts-local")
+
+    assert validator.validate_continuation_request(request) is None
+
+
+def test_continuation_with_ref_audio_passes_validation() -> None:
+    from sglang_omni.serve.protocol import CreateSpeechRequest
+    from sglang_omni.serve.speech_service import SpeechRequestValidator
+
+    request = CreateSpeechRequest.model_validate(
+        {
+            "input": "continue",
+            "mode": "continuation",
+            "ref_audio": DATA_URI,
+        }
+    )
+    validator = SpeechRequestValidator(default_model="moss-tts-local")
+
+    assert validator.validate_continuation_request(request) is None
+
+
+def test_continuation_with_both_prefix_forms_is_bad_request() -> None:
+    from sglang_omni.serve.protocol import CreateSpeechRequest
+    from sglang_omni.serve.speech_errors import SpeechAPIError
+    from sglang_omni.serve.speech_service import SpeechRequestValidator
+
+    request = CreateSpeechRequest.model_validate(
+        {
+            "input": "continue",
+            "mode": "continuation",
+            "prefix_audio_codes": {"frames": 1, "n_vq": N_VQ, "data": ""},
+            "ref_audio": DATA_URI,
+        }
+    )
+    validator = SpeechRequestValidator(default_model="moss-tts-local")
+
+    with pytest.raises(SpeechAPIError) as exc_info:
+        validator.validate_continuation_request(request)
+
+    assert exc_info.value.status_code == 400
+    assert "mutually exclusive" in exc_info.value.message
+
+
+def test_generation_without_prefix_passes_validation() -> None:
+    from sglang_omni.serve.protocol import CreateSpeechRequest
+    from sglang_omni.serve.speech_service import SpeechRequestValidator
+
+    request = CreateSpeechRequest.model_validate(
+        {"input": "generate", "mode": "generate"}
+    )
+    validator = SpeechRequestValidator(default_model="moss-tts-local")
+
+    assert validator.validate_continuation_request(request) is None

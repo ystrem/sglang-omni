@@ -382,6 +382,35 @@ class CreateSpeechRequest(BaseModel):
     stage_params: dict[str, dict[str, Any]] | None = None
 
 
+class SpeechNextPrefixAudioCodes(BaseModel):
+    """MOSS-TTS Local continuation codec envelope."""
+
+    sr: int
+    n_vq: int
+    frames: int
+    layout: Literal["frames_x_codebooks"]
+    dtype: Literal["uint16"]
+    encoding: Literal["base64"]
+    data: str
+
+
+class SpeechNextPrefix(BaseModel):
+    """Prefix returned by a continuation hop."""
+
+    text: str
+    audio_codes: SpeechNextPrefixAudioCodes
+    tail_sec: float
+
+
+class CreateSpeechJSONResponse(BaseModel):
+    """JSON-encoded audio response with optional continuation state."""
+
+    audio: str
+    format: str
+    media_type: str
+    next_prefix: SpeechNextPrefix | None = None
+
+
 class SpeechBatchItem(BaseModel):
     """One item in a batch text-to-speech request."""
 

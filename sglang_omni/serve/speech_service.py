@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from sglang_omni.client import ClientError, GenerateRequest, SamplingParams
 from sglang_omni.client.audio import audio_encoding_unavailable_reason
 from sglang_omni.config.schema import MAX_SPEECH_INPUT_CHARS, CustomVoiceConfig
+from sglang_omni.models.moss_tts_local.continuation import MAX_PREFIX_TAIL_SEC
 from sglang_omni.preprocessing.base import MediaIO
 from sglang_omni.preprocessing.resource_connector import MultiModalResourceConnector
 from sglang_omni.scheduling.streaming_vocoder import INITIAL_CODEC_CHUNK_FRAMES_PARAM
@@ -256,8 +257,14 @@ class SpeechRequestValidator:
         Silently degrading to generation would answer 200 with an utterance that
         restarts from the first word — the audible seam this mode removes.
         """
-        if request.prefix_audio_codes is None and request.ref_audio is None:
-            return
+        if request.mode == "continuation" and (
+            request.prefix_audio_codes is None and request.ref_audio is None
+        ):
+            raise bad_request(
+                "continuation mode requires a prefix: pass prefix_audio_codes "
+                "or ref_audio",
+                param="prefix_audio_codes",
+            )
         else:
             pass
         if request.prefix_audio_codes is not None and request.ref_audio is not None:

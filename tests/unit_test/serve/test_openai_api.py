@@ -114,10 +114,15 @@ def fault_client(model_name: str, error: str = "cuda out of memory") -> Client:
 
 class SuccessfulSpeechClient:
     def __init__(
-        self, *, sample_rate: int = 24000, finish_reason: str = "stop"
+        self,
+        *,
+        sample_rate: int = 24000,
+        finish_reason: str = "stop",
+        continuation: dict[str, Any] | None = None,
     ) -> None:
         self.sample_rate = sample_rate
         self.finish_reason = finish_reason
+        self.continuation = continuation
         self.generate_requests: list[GenerateRequest] = []
         self.speech_requests: list[GenerateRequest] = []
 
@@ -152,6 +157,7 @@ class SuccessfulSpeechClient:
             mime_type=f"audio/{response_format}",
             format=response_format,
             finish_reason=self.finish_reason,
+            continuation=self.continuation,
         )
 
 
@@ -723,6 +729,58 @@ def test_speech_endpoint_returns_binary_audio() -> None:
     assert response.headers["x-finish-reason"] == "length"
     assert speech_client.speech_requests[0].model == "tts"
     assert speech_client.speech_requests[0].metadata["tts_params"]["voice"] == "default"
+
+
+def test_speech_endpoint_returns_json_audio_and_continuation() -> None:
+    next_prefix = {
+        "text": "prefix continued",
+        "audio_codes": {
+            "sr": 48000,
+            "n_vq": 12,
+            "frames": 2,
+            "layout": "frames_x_codebooks",
+            "dtype": "uint16",
+            "encoding": "base64",
+            "data": "AAECAwQ=",
+        },
+        "tail_sec": 8.0,
+    }
+    speech_client = SuccessfulSpeechClient(continuation={"next_prefix": next_prefix})
+    client = TestClient(create_app(speech_client, model_name="moss-tts-local"))
+
+    response = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "continue",
+            "mode": "continuation",
+            "prefix_text": "prefix",
+            "prefix_audio_codes": {
+                "sr": 48000,
+                "n_vq": 12,
+                "frames": 2,
+                "layout": "frames_x_codebooks",
+                "dtype": "uint16",
+                "encoding": "base64",
+                "data": "AAECAwQ=",
+            },
+            "prefix_tail_sec": 8.0,
+            "return_format": "json",
+            "response_format": "wav",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+    assert response.json() == {
+        "audio": "UklGRg==",
+        "format": "wav",
+        "media_type": "audio/wav",
+        "next_prefix": next_prefix,
+    }
+    assert (
+        speech_client.speech_requests[0].metadata["tts_params"]["return_format"]
+        == "json"
+    )
 
 
 def test_create_app_passes_model_specific_speech_input_limit() -> None:
