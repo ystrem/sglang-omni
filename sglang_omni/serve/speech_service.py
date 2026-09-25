@@ -840,6 +840,8 @@ def build_tts_params(
         tts_params["ref_audio"] = request.ref_audio
     if request.ref_text is not None:
         tts_params["ref_text"] = request.ref_text
+    if request.mode != "generate":
+        tts_params["mode"] = request.mode
     if uploaded_voice is not None:
         tts_params["task_type"] = "Base"
         tts_params["ref_audio"] = uploaded_voice.ref_audio

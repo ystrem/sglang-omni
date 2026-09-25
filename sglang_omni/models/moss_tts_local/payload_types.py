@@ -38,6 +38,7 @@ class MossTTSLocalState(DeclarativeStateBase):
 
     sample_rate: int = wire(48000, codec="int_or")
     text: str = wire("", codec="str")
+    mode: str = "generate"
     ref_audio: Any | None = None
     ref_text: str | None = None
     language: str | None = None
