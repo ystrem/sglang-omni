@@ -21,6 +21,7 @@ from sglang_omni.models.moss_tts.audio_tokenizer import (
     MossAudioTokenizerVocoderDecoder,
 )
 from sglang_omni.models.moss_tts.vocoder import decode_codes_batch
+from sglang_omni.models.moss_tts_local.continuation import build_next_prefix
 from sglang_omni.models.moss_tts_local.payload_types import MossTTSLocalState
 from sglang_omni.proto import StagePayload
 from sglang_omni.scheduling.pipeline_state import build_usage
@@ -33,6 +34,37 @@ from sglang_omni.utils.audio_payload import audio_waveform_payload
 logger = logging.getLogger(__name__)
 
 _SOURCE_HINT = "MOSS-TTS Local"
+
+
+def build_next_prefix_result(
+    state: MossTTSLocalState,
+    *,
+    n_vq: int,
+) -> dict[str, Any] | None:
+    """Return the next_prefix for a hop, or None when the client did not ask.
+
+    The client opts in with ``prefix_tail_sec`` on the request; without it the
+    response stays exactly as it was before continuation support existed.
+    """
+    if state.prefix_tail_sec is None:
+        return None
+    else:
+        pass
+    if state.audio_codes is None:
+        raise RuntimeError(
+            "MOSS-TTS Local continuation requested a next_prefix but the "
+            "generated audio codes are missing"
+        )
+    else:
+        pass
+    return build_next_prefix(
+        text=state.text,
+        ref_text=state.ref_text,
+        rows=state.audio_codes,
+        n_vq=n_vq,
+        tail_sec=state.prefix_tail_sec,
+        sample_rate=int(state.sample_rate or 48000),
+    )
 
 
 class CodecStreamSession:
@@ -839,6 +871,11 @@ class MossTTSLocalStreamingVocoderScheduler(
         audio_payload = audio_waveform_payload(
             wav, source_hint=_SOURCE_HINT, keep_channels=True
         )
+        # Build the continuation prefix BEFORE the codes are dropped: this is
+        # the last point in the pipeline where the generated (T, n_vq) tensor
+        # exists. next_prefix is msgpack-safe (bytes/str/int/float/list/dict),
+        # which the terminal CompleteMessage requires.
+        next_prefix = build_next_prefix_result(state, n_vq=self.n_vq)
         state.audio_codes = None
         state.sample_rate = self.sample_rate
         payload.data = state.to_dict()
@@ -848,6 +885,10 @@ class MossTTSLocalStreamingVocoderScheduler(
         usage = build_usage(state)
         if usage is not None:
             payload.data["usage"] = usage
+        else:
+            pass
+        if next_prefix is not None:
+            payload.data["next_prefix"] = next_prefix
         else:
             pass
         return payload

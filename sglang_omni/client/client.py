@@ -285,6 +285,7 @@ class Client:
         audio_chunks: list[Any] = []
         sample_rate: int | None = None
         last_chunk: GenerateChunk | None = None
+        continuation: dict[str, Any] | None = None
         extra_params = dict(request.extra_params)
         extra_params.pop("stream", None)
         request = replace(request, stream=False, extra_params=extra_params)
@@ -296,6 +297,10 @@ class Client:
                 pass
             if chunk.sample_rate is not None:
                 sample_rate = chunk.sample_rate
+            else:
+                pass
+            if chunk.continuation is not None:
+                continuation = chunk.continuation
             else:
                 pass
             last_chunk = chunk
@@ -343,6 +348,7 @@ class Client:
             sample_rate=sample_rate,
             usage=last_chunk.usage if last_chunk else None,
             finish_reason=last_chunk.finish_reason if last_chunk else None,
+            continuation=continuation,
         )
 
     # ------------------------------------------------------------------
@@ -516,6 +522,11 @@ class Client:
         sample_rate = data.get("sample_rate")
         if sample_rate is not None:
             chunk.sample_rate = sample_rate
+        else:
+            pass
+        next_prefix = data.get("next_prefix")
+        if next_prefix is not None:
+            chunk.continuation = {"next_prefix": next_prefix}
         else:
             pass
 

@@ -46,3 +46,8 @@ class MossTTSLocalState(DeclarativeStateBase):
     token_count: int | None = wire(None, codec="opt_int")
     generation_kwargs: dict[str, Any] = wire(default_factory=dict, codec="dict")
     audio_codes: Any | None = wire(None, codec="tensor_cpu")
+    # Continuation chaining: the client asks for a next_prefix whose audio_codes
+    # are this utterance's last `prefix_tail_sec` of frames. The requested tail
+    # has to reach the vocoder (the only place the generated codes still exist)
+    # to size that window, so it rides the state as a plain float.
+    prefix_tail_sec: float | None = None

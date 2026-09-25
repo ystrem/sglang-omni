@@ -25,6 +25,11 @@ from sglang_omni.models.moss_tts.request_builders import (
     resolve_token_count,
     validate_moss_tts_generation_kwargs,
 )
+from sglang_omni.models.moss_tts_local.continuation import (
+    ContinuationValidationError,
+    resolve_prefix_tail_sec,
+    unpack_audio_codes,
+)
 from sglang_omni.models.moss_tts_local.payload_types import MossTTSLocalState
 from sglang_omni.proto import StagePayload
 from sglang_omni.scheduling.prepared_request_queue import PreparedRequestQueue
@@ -162,6 +167,7 @@ def build_moss_tts_local_state(payload: StagePayload) -> MossTTSLocalState:
     )
     text, token_count = resolve_token_count(text, params, tts_params)
     mode = tts_params.get("mode") or params.get("mode") or "generate"
+    ref_text = resolve_continuation_ref_text(ref_text, tts_params)
     return MossTTSLocalState(
         text=text,
         mode=mode,
@@ -170,6 +176,7 @@ def build_moss_tts_local_state(payload: StagePayload) -> MossTTSLocalState:
         language=language,
         instructions=instructions,
         token_count=token_count,
+        prefix_tail_sec=resolve_requested_tail_sec(tts_params, params),
         generation_kwargs=build_generation_kwargs(params, tts_params=tts_params),
     )
 
@@ -289,6 +296,101 @@ def resolve_reference_codes(
         return reference_for_processor(processor, ref_audio)
 
 
+def resolve_continuation_ref_text(
+    ref_text: str | None,
+    tts_params: dict[str, Any],
+) -> str | None:
+    """Let the client name the prefix transcript the ComfyUI contract uses.
+
+    A next_prefix replays ``{text, audio_codes, tail_sec}``; ``prefix_text`` is
+    the key the content-factory client already fills. Accept both spellings so
+    the same hop payload drives either server, and never let a non-string value
+    reach the prompt builder as a stray representation.
+    """
+    for key in ("prefix_text", "ref_text"):
+        value = tts_params.get(key)
+        if value is None:
+            continue
+        else:
+            pass
+        if not isinstance(value, str):
+            raise ContinuationValidationError(f"{key} must be a string")
+        else:
+            return value
+    return ref_text
+
+
+def resolve_requested_tail_sec(
+    tts_params: dict[str, Any],
+    params: dict[str, Any],
+) -> float | None:
+    """The tail length the client asked ``next_prefix.audio_codes`` to carry."""
+    for source in (tts_params, params):
+        for key in ("prefix_tail_sec", "next_prefix_tail_sec"):
+            value = source.get(key)
+            if value is None:
+                continue
+            else:
+                pass
+            return resolve_prefix_tail_sec(value)
+    return None
+
+
+def resolve_continuation_prefix_audio_codes(
+    processor: Any,
+    ref_audio: Any | None,
+    tts_params: dict[str, Any],
+    reference_encoder: Any = None,
+) -> Any | None:
+    """Resolve the prefix a continuation hop conditions on.
+
+    Two forms, never both: a replayed ``prefix_audio_codes`` envelope (what the
+    content-factory client carries from the previous hop's ``next_prefix``),
+    decoded here, or a raw ``ref_audio`` reference encoded through the shared
+    path/data-URI encoder. Returns ``None`` when the hop carries no prefix, so
+    the caller can fail loud.
+    """
+    envelope = tts_params.get("prefix_audio_codes")
+    if envelope is None:
+        return resolve_reference_codes(processor, ref_audio, reference_encoder)
+    else:
+        pass
+    if ref_audio is not None:
+        # A caller that supplied BOTH a raw reference and a codes envelope has
+        # two competing prefixes; picking one silently is the seam bug.
+        raise ContinuationValidationError(
+            "prefix_audio_codes and ref_audio are mutually exclusive; "
+            "a continuation hop carries the previous prefix in exactly one form"
+        )
+    return [unpack_audio_codes(envelope)]
+
+
+def require_continuation_prefix(prefix_codes: list[Any] | None) -> torch.Tensor:
+    """Fail loud when a continuation hop carries no prefix to condition on.
+
+    Falling back to the generation path here would return HTTP 200 with an
+    utterance that restarts from the beginning — the seam this mode exists to
+    remove.
+    """
+    if not prefix_codes:
+        raise ContinuationValidationError(
+            "continuation mode requires a prefix to continue: pass ref_audio "
+            "(a path or data URI) or prefix_audio_codes (an envelope from a "
+            "previous hop's next_prefix)"
+        )
+    else:
+        pass
+    codes = prefix_codes[0]
+    if codes is None or getattr(codes, "numel", lambda: 0)() == 0:
+        raise ContinuationValidationError(
+            "continuation mode requires a non-empty prefix; the supplied "
+            "reference encoded to zero audio codes"
+        )
+    else:
+        pass
+    return torch.as_tensor(codes, dtype=torch.long)
+
+
 def build_processor_message(
     processor: Any,
     state: MossTTSLocalState,
@@ -312,11 +414,16 @@ def prepare_moss_tts_local_request(
 ) -> MossTTSLocalPreparedRequest:
     state = build_moss_tts_local_state(payload)
     if state.mode == "continuation":
-        if not state.ref_audio:
-            raise ValueError("continuation mode requires ref_audio (the prefix audio)")
-        prompt_audio_codes = resolve_reference_codes(
-            processor, state.ref_audio, reference_encoder
-        )[0]
+        tts_params = payload.request.metadata.get("tts_params")
+        if not isinstance(tts_params, dict):
+            tts_params = {}
+        else:
+            pass
+        prompt_audio_codes = require_continuation_prefix(
+            resolve_continuation_prefix_audio_codes(
+                processor, state.ref_audio, tts_params, reference_encoder
+            )
+        )
         continuation_text = (state.ref_text or "") + state.text
         conversation = [
             processor.build_user_message(

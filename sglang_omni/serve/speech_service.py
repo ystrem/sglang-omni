@@ -238,6 +238,7 @@ class SpeechRequestValidator:
     ) -> PreparedSpeechRequest:
         """Validate a parsed request and build backend reference descriptors."""
 
+        self.validate_continuation_request(request)
         updates = self.prepare_generation_updates(request)
         prepared_references = self.prepare_reference_fields(request)
         self.validate_speech_references(request, prepared_references)
@@ -248,6 +249,60 @@ class SpeechRequestValidator:
             reference_descriptors=prepared_references.reference_descriptors,
             uploaded_voice=prepared_references.uploaded_voice,
         )
+
+    def validate_continuation_request(self, request: CreateSpeechRequest) -> None:
+        """Fail loud on a continuation hop that carries no prefix.
+
+        Silently degrading to generation would answer 200 with an utterance that
+        restarts from the first word — the audible seam this mode removes.
+        """
+        if request.prefix_audio_codes is None and request.ref_audio is None:
+            return
+        else:
+            pass
+        if request.prefix_audio_codes is not None and request.ref_audio is not None:
+            raise bad_request(
+                "prefix_audio_codes and ref_audio are mutually exclusive; a "
+                "continuation hop carries its prefix in exactly one form",
+                param="prefix_audio_codes",
+            )
+        else:
+            pass
+        if request.prefix_text is not None and not isinstance(request.prefix_text, str):
+            raise bad_request("prefix_text must be a string", param="prefix_text")
+        else:
+            pass
+        if request.prefix_audio_codes is not None and not isinstance(
+            request.prefix_audio_codes, dict
+        ):
+            raise bad_request(
+                "prefix_audio_codes must be a JSON object",
+                param="prefix_audio_codes",
+            )
+        else:
+            pass
+        if request.prefix_tail_sec is not None:
+            try:
+                tail = float(request.prefix_tail_sec)
+            except (TypeError, ValueError) as exc:
+                raise bad_request(
+                    "prefix_tail_sec must be a number", param="prefix_tail_sec"
+                ) from exc
+            if tail <= 0:
+                raise bad_request(
+                    "prefix_tail_sec must be > 0", param="prefix_tail_sec"
+                )
+            else:
+                pass
+            if tail > MAX_PREFIX_TAIL_SEC:
+                raise bad_request(
+                    f"prefix_tail_sec max is {MAX_PREFIX_TAIL_SEC}, got {tail}",
+                    param="prefix_tail_sec",
+                )
+            else:
+                pass
+        else:
+            pass
 
     def validate_input_text(self, input_text: str) -> None:
         if not isinstance(input_text, str) or not input_text.strip():
@@ -974,6 +1029,22 @@ def build_tts_params(
         pass
     if request.mode != "generate":
         tts_params["mode"] = request.mode
+    else:
+        pass
+    if request.prefix_text is not None:
+        tts_params["prefix_text"] = request.prefix_text
+    else:
+        pass
+    if request.prefix_audio_codes is not None:
+        tts_params["prefix_audio_codes"] = request.prefix_audio_codes
+    else:
+        pass
+    if request.prefix_tail_sec is not None:
+        tts_params["prefix_tail_sec"] = request.prefix_tail_sec
+    else:
+        pass
+    if request.return_format != "binary":
+        tts_params["return_format"] = request.return_format
     else:
         pass
     if uploaded_voice is not None:

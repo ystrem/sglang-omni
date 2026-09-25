@@ -353,6 +353,11 @@ class CreateSpeechRequest(BaseModel):
     language: str | None = None
     instructions: str | None = None  # style/emotion instructions
     mode: Literal["generate", "continuation", "voice_clone"] = "generate"
+    # MOSS-TTS continuation chain (same keys the ComfyUI contract uses).
+    prefix_text: str | None = None  # transcript of the prefix being continued
+    prefix_audio_codes: dict[str, Any] | None = None  # envelope from next_prefix
+    prefix_tail_sec: float | None = None  # length of next_prefix.audio_codes
+    return_format: Literal["binary", "json"] = "binary"
 
     # Voice cloning parameters
     ref_audio: str | None = None  # path or URL to reference audio
@@ -395,6 +400,10 @@ class SpeechBatchItem(BaseModel):
     language: Any = None
     instructions: Any = None
     mode: Any = None
+    prefix_text: Any = None
+    prefix_audio_codes: Any = None
+    prefix_tail_sec: Any = None
+    return_format: Any = None
     ref_audio: Any = None
     ref_text: Any = None
     references: Any = None
@@ -431,6 +440,10 @@ class CreateSpeechBatchRequest(BaseModel):
     language: str | None = None
     instructions: str | None = None
     mode: Literal["generate", "continuation", "voice_clone"] = "generate"
+    prefix_text: str | None = None
+    prefix_audio_codes: dict[str, Any] | None = None
+    prefix_tail_sec: float | None = None
+    return_format: Literal["binary", "json"] = "binary"
     ref_audio: str | None = None
     ref_text: str | None = None
     references: list[SpeechReference] | None = None

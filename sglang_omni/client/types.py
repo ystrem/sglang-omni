@@ -147,6 +147,9 @@ class GenerateChunk:
     language: str | None = None
     audio_data: Any = None
     sample_rate: int | None = None
+    # MOSS-TTS continuation chaining: the generated codes plus the next_prefix
+    # derived from them, present only when the request asked for a chain.
+    continuation: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -166,6 +169,7 @@ class GenerateChunk:
             "language": self.language,
             "audio_data": self.audio_data,
             "sample_rate": self.sample_rate,
+            "continuation": self.continuation,
         }
 
 
@@ -237,6 +241,7 @@ class SpeechResult:
     sample_rate: int | None = None
     usage: UsageInfo | None = None
     finish_reason: str | None = None
+    continuation: dict[str, Any] | None = None
 
 
 class ClientError(Exception):
