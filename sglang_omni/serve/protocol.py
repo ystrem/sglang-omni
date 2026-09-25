@@ -352,6 +352,7 @@ class CreateSpeechRequest(BaseModel):
     task_type: str | None = None  # e.g. "Base", "CustomVoice", "VoiceDesign"
     language: str | None = None
     instructions: str | None = None  # style/emotion instructions
+    mode: Literal["generate", "continuation", "voice_clone"] = "generate"
 
     # Voice cloning parameters
     ref_audio: str | None = None  # path or URL to reference audio
@@ -393,6 +394,7 @@ class SpeechBatchItem(BaseModel):
     task_type: Any = None
     language: Any = None
     instructions: Any = None
+    mode: Any = None
     ref_audio: Any = None
     ref_text: Any = None
     references: Any = None
@@ -428,6 +430,7 @@ class CreateSpeechBatchRequest(BaseModel):
     task_type: str | None = None
     language: str | None = None
     instructions: str | None = None
+    mode: Literal["generate", "continuation", "voice_clone"] = "generate"
     ref_audio: str | None = None
     ref_text: str | None = None
     references: list[SpeechReference] | None = None

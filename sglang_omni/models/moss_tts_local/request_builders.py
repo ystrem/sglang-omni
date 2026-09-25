@@ -161,8 +161,10 @@ def build_moss_tts_local_state(payload: StagePayload) -> MossTTSLocalState:
         or params.get("instruct")
     )
     text, token_count = resolve_token_count(text, params, tts_params)
+    mode = tts_params.get("mode") or params.get("mode") or "generate"
     return MossTTSLocalState(
         text=text,
+        mode=mode,
         ref_audio=ref_audio,
         ref_text=ref_text,
         language=language,
@@ -272,20 +274,27 @@ def build_generation_kwargs(
     return generation_kwargs
 
 
+def resolve_reference_codes(
+    processor: Any,
+    ref_audio: Any | None,
+    reference_encoder: Any = None,
+) -> list[Any] | None:
+    if reference_encoder is not None and isinstance(ref_audio, str):
+        if _DATA_URI_RE.match(ref_audio) is None:
+            return [reference_encoder.encode(ref_audio)]
+        else:
+            # Data-URI refs through the same LRU (bytes: keyspace).
+            return [reference_encoder.encode_data_uri(ref_audio)]
+    else:
+        return reference_for_processor(processor, ref_audio)
+
+
 def build_processor_message(
     processor: Any,
     state: MossTTSLocalState,
     reference_encoder: Any = None,
 ) -> dict[str, Any]:
-    ref_audio = state.ref_audio
-    if reference_encoder is not None and isinstance(ref_audio, str):
-        if _DATA_URI_RE.match(ref_audio) is None:
-            reference = [reference_encoder.encode(ref_audio)]
-        else:
-            # Data-URI refs through the same LRU (bytes: keyspace).
-            reference = [reference_encoder.encode_data_uri(ref_audio)]
-    else:
-        reference = reference_for_processor(processor, ref_audio)
+    reference = resolve_reference_codes(processor, state.ref_audio, reference_encoder)
     return processor.build_user_message(
         text=state.text,
         reference=reference,
@@ -302,8 +311,28 @@ def prepare_moss_tts_local_request(
     reference_encoder: Any = None,
 ) -> MossTTSLocalPreparedRequest:
     state = build_moss_tts_local_state(payload)
-    message = build_processor_message(processor, state, reference_encoder)
-    batch = processor([[message]], mode="generation")
+    if state.mode == "continuation":
+        if not state.ref_audio:
+            raise ValueError("continuation mode requires ref_audio (the prefix audio)")
+        prompt_audio_codes = resolve_reference_codes(
+            processor, state.ref_audio, reference_encoder
+        )[0]
+        continuation_text = (state.ref_text or "") + state.text
+        conversation = [
+            processor.build_user_message(
+                text=continuation_text,
+                instruction=state.instructions,
+                tokens=state.token_count,
+                language=state.language,
+            ),
+            processor.build_assistant_message(audio_codes_list=[prompt_audio_codes]),
+        ]
+        processor_mode = "continuation"
+    else:
+        message = build_processor_message(processor, state, reference_encoder)
+        conversation = [message]
+        processor_mode = "generation"
+    batch = processor([conversation], mode=processor_mode)
     input_rows = batch["input_ids"]
     if input_rows.ndim != 3 or int(input_rows.shape[0]) != 1:
         raise ValueError(
